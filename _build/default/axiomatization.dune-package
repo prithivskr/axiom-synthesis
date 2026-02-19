@@ -1,0 +1,133 @@
+(lang dune 3.20)
+(name axiomatization)
+(sections (lib .) (libexec .) (bin ../../bin))
+(files
+ (lib
+  (META
+   axiomatization.a
+   axiomatization.cma
+   axiomatization.cmi
+   axiomatization.cmt
+   axiomatization.cmx
+   axiomatization.cmxa
+   axiomatization.ml
+   axiomatization__Canonicalization.cmi
+   axiomatization__Canonicalization.cmt
+   axiomatization__Canonicalization.cmx
+   axiomatization__Environment.cmi
+   axiomatization__Environment.cmt
+   axiomatization__Environment.cmx
+   axiomatization__Equality.cmi
+   axiomatization__Equality.cmt
+   axiomatization__Equality.cmx
+   axiomatization__Evaluator.cmi
+   axiomatization__Evaluator.cmt
+   axiomatization__Evaluator.cmx
+   axiomatization__Generalization.cmi
+   axiomatization__Generalization.cmt
+   axiomatization__Generalization.cmx
+   axiomatization__Generator.cmi
+   axiomatization__Generator.cmt
+   axiomatization__Generator.cmx
+   axiomatization__Latex.cmi
+   axiomatization__Latex.cmt
+   axiomatization__Latex.cmx
+   axiomatization__Prelude.cmi
+   axiomatization__Prelude.cmt
+   axiomatization__Prelude.cmx
+   axiomatization__Tensor.cmi
+   axiomatization__Tensor.cmt
+   axiomatization__Tensor.cmx
+   axiomatization__Term.cmi
+   axiomatization__Term.cmt
+   axiomatization__Term.cmx
+   axiomatization__Verify.cmi
+   axiomatization__Verify.cmt
+   axiomatization__Verify.cmx
+   axiomatization__Verify_nested.cmi
+   axiomatization__Verify_nested.cmt
+   axiomatization__Verify_nested.cmx
+   canonicalization.ml
+   dune-package
+   environment.ml
+   equality.ml
+   evaluator.ml
+   generalization.ml
+   generator.ml
+   latex.ml
+   opam
+   prelude.ml
+   tensor.ml
+   term.ml
+   verify.ml
+   verify_nested.ml))
+ (libexec (axiomatization.cmxs))
+ (bin (axiomatization test)))
+(library
+ (name axiomatization)
+ (kind normal)
+ (archives (byte axiomatization.cma) (native axiomatization.cmxa))
+ (plugins (byte axiomatization.cma) (native axiomatization.cmxs))
+ (native_archives axiomatization.a)
+ (requires z3)
+ (main_module_name Axiomatization)
+ (modes byte native)
+ (modules
+  (wrapped
+   (group
+    (alias
+     (obj_name axiomatization)
+     (visibility public)
+     (kind alias)
+     (source (path Axiomatization) (impl (path axiomatization.ml-gen))))
+    (name Axiomatization)
+    (modules
+     (module
+      (obj_name axiomatization__Canonicalization)
+      (visibility public)
+      (source (path Canonicalization) (impl (path canonicalization.ml))))
+     (module
+      (obj_name axiomatization__Environment)
+      (visibility public)
+      (source (path Environment) (impl (path environment.ml))))
+     (module
+      (obj_name axiomatization__Equality)
+      (visibility public)
+      (source (path Equality) (impl (path equality.ml))))
+     (module
+      (obj_name axiomatization__Evaluator)
+      (visibility public)
+      (source (path Evaluator) (impl (path evaluator.ml))))
+     (module
+      (obj_name axiomatization__Generalization)
+      (visibility public)
+      (source (path Generalization) (impl (path generalization.ml))))
+     (module
+      (obj_name axiomatization__Generator)
+      (visibility public)
+      (source (path Generator) (impl (path generator.ml))))
+     (module
+      (obj_name axiomatization__Latex)
+      (visibility public)
+      (source (path Latex) (impl (path latex.ml))))
+     (module
+      (obj_name axiomatization__Prelude)
+      (visibility public)
+      (source (path Prelude) (impl (path prelude.ml))))
+     (module
+      (obj_name axiomatization__Tensor)
+      (visibility public)
+      (source (path Tensor) (impl (path tensor.ml))))
+     (module
+      (obj_name axiomatization__Term)
+      (visibility public)
+      (source (path Term) (impl (path term.ml))))
+     (module
+      (obj_name axiomatization__Verify)
+      (visibility public)
+      (source (path Verify) (impl (path verify.ml))))
+     (module
+      (obj_name axiomatization__Verify_nested)
+      (visibility public)
+      (source (path Verify_nested) (impl (path verify_nested.ml))))))
+   (wrapped true))))

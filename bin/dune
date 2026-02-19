@@ -1,0 +1,15 @@
+(executable
+ (public_name axiomatization)
+ (name main)
+ (libraries axiomatization z3))
+
+(executable
+ (public_name test)
+ (name test)
+ (libraries axiomatization z3))
+
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

@@ -1,0 +1,6 @@
+description = ""
+requires = "z3"
+archive(byte) = "axiomatization.cma"
+archive(native) = "axiomatization.cmxa"
+plugin(byte) = "axiomatization.cma"
+plugin(native) = "axiomatization.cmxs"

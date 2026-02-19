@@ -1,0 +1,8 @@
+(library
+ (name axiomatization)
+ (public_name axiomatization)
+ (libraries z3)
+ (modules
+  tensor term environment evaluator generator
+  canonicalization equality generalization latex verify verify_nested
+  prelude))

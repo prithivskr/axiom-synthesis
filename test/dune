@@ -1,0 +1,9 @@
+(test
+ (name test_simple)
+ (modules test_simple)
+ (libraries axiomatization z3 alcotest))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

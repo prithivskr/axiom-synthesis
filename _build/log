@@ -1,0 +1,29 @@
+# dune exec axiomatization
+# OCAMLPARAM: unset
+# Shared cache: enabled-except-user-rules
+# Shared cache location: /Users/saline/.cache/dune/db
+# Workspace root: /Users/saline/development/projects/axiomatization
+# Auto-detected concurrency: 10
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }
+$ /Users/saline/.opam/ocaml-base-compiler.5.4.0/bin/ocamlc.opt -config > /var/folders/32/rrn1h6213390mmypxxqwjcp80000gn/T/dune_22500f_output
+$ (cd _build/default && /Users/saline/.opam/ocaml-base-compiler.5.4.0/bin/ocamldep.opt -modules -impl bin/main.ml) > _build/default/bin/.main.eobjs/dune__exe__Main.impl.d
+$ (cd _build/default && /Users/saline/.opam/ocaml-base-compiler.5.4.0/bin/ocamlopt.opt -w @1..3@5..28@31..39@43@46..47@49..57@61..62@67@69-40 -strict-sequence -strict-formats -short-paths -keep-locs -warn-error -A -g -I bin/.main.eobjs/byte -I bin/.main.eobjs/native -I /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/ocaml/threads -I /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/ocaml/unix -I /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/z3 -I /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/zarith -I lib/.axiomatization.objs/byte -I lib/.axiomatization.objs/native -cmi-file bin/.main.eobjs/byte/dune__exe__Main.cmi -no-alias-deps -opaque -open Dune__exe -o bin/.main.eobjs/native/dune__exe__Main.cmx -c -impl bin/main.ml)
+> File "bin/main.ml", line 22, characters 19-36:
+> 22 |       (fun ctx a b mul_scalar_scalar add_scalar_scalar ->
+>                         ^^^^^^^^^^^^^^^^^
+> Warning 27 [unused-var-strict]: unused variable mul_scalar_scalar.
+>
+> File "bin/main.ml", line 22, characters 37-54:
+> 22 |       (fun ctx a b mul_scalar_scalar add_scalar_scalar ->
+>                                           ^^^^^^^^^^^^^^^^^
+> Warning 27 [unused-var-strict]: unused variable add_scalar_scalar.
+$ (cd _build/default && /Users/saline/.opam/ocaml-base-compiler.5.4.0/bin/ocamlopt.opt -w @1..3@5..28@31..39@43@46..47@49..57@61..62@67@69-40 -strict-sequence -strict-formats -short-paths -keep-locs -warn-error -A -g -o bin/main.exe /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/zarith/zarith.cmxa -I /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/zarith /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/ocaml/unix/unix.cmxa /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/ocaml/threads/threads.cmxa /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/z3/z3ml.cmxa -I /Users/saline/.opam/ocaml-base-compiler.5.4.0/lib/z3 lib/axiomatization.cmxa bin/.main.eobjs/native/dune__exe.cmx bin/.main.eobjs/native/dune__exe__Main.cmx)
+> ld: warning: search path '/opt/homebrew/opt/llvm/lib' not found
