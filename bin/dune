@@ -8,6 +8,11 @@
  (name test)
  (libraries axiomatization z3))
 
+(executable
+ (public_name argmax)
+ (name argmax)
+ (libraries axiomatization z3))
+
 
 (env
  (dev

@@ -1,0 +1,94 @@
+open Z3
+open Term
+
+let rec find_reduction = function
+  | Reduction (_, _, inner) ->
+      Some inner
+  | Add (a, b) | Mult (a, b) -> (
+    match find_reduction a with
+    | Some inner ->
+        Some inner
+    | None ->
+        find_reduction b )
+  | _ ->
+      None
+
+let rec inner_term_to_z3 ctx vars tensor_val term =
+  match term with
+  | Var x ->
+      Hashtbl.find vars x
+  | Tensor _ ->
+      tensor_val
+  | Add (a, b) ->
+      let a_z3 = inner_term_to_z3 ctx vars tensor_val a in
+      let b_z3 = inner_term_to_z3 ctx vars tensor_val b in
+      Arithmetic.mk_add ctx [a_z3; b_z3]
+  | Mult (a, b) ->
+      let a_z3 = inner_term_to_z3 ctx vars tensor_val a in
+      let b_z3 = inner_term_to_z3 ctx vars tensor_val b in
+      Arithmetic.mk_mul ctx [a_z3; b_z3]
+  | Reduction _ ->
+      failwith "Nested reductions in index verification not yet supported"
+
+let verify_index lhs rhs z3_reduce_index =
+  print_endline "Verifying index equivalence..." ;
+  let cfg = [("model", "true")] in
+  let ctx = mk_context cfg in
+  let solver = Solver.mk_solver ctx None in
+  let int_sort = Arithmetic.Integer.mk_sort ctx in
+  let v0 = Expr.mk_const_s ctx "v0" int_sort in
+  let i0 = Expr.mk_const_s ctx "i0" int_sort in
+  let v1 = Expr.mk_const_s ctx "v1" int_sort in
+  let i1 = Expr.mk_const_s ctx "i1" int_sort in
+  let vars = Hashtbl.create 10 in
+  let rec collect_v = function
+    | Var x ->
+        if not (Hashtbl.mem vars x) then
+          Hashtbl.add vars x (Expr.mk_const_s ctx x int_sort)
+    | Add (a, b) | Mult (a, b) ->
+        collect_v a ; collect_v b
+    | Reduction (_, _, inner) ->
+        collect_v inner
+    | Tensor _ ->
+        ()
+  in
+  collect_v lhs ;
+  collect_v rhs ;
+  let inner_lhs =
+    match find_reduction lhs with
+    | Some t ->
+        t
+    | None ->
+        failwith "No reduction found in LHS"
+  in
+  let inner_rhs =
+    match find_reduction rhs with
+    | Some t ->
+        t
+    | None ->
+        failwith "No reduction found in RHS"
+  in
+  let v0_lhs = inner_term_to_z3 ctx vars v0 inner_lhs in
+  let v1_lhs = inner_term_to_z3 ctx vars v1 inner_lhs in
+  let v0_rhs = inner_term_to_z3 ctx vars v0 inner_rhs in
+  let v1_rhs = inner_term_to_z3 ctx vars v1 inner_rhs in
+  let lhs_idx = z3_reduce_index ctx v0_lhs i0 v1_lhs i1 in
+  let rhs_idx = z3_reduce_index ctx v0_rhs i0 v1_rhs i1 in
+  let eq = Boolean.mk_eq ctx lhs_idx rhs_idx in
+  let not_eq = Boolean.mk_not ctx eq in
+  Solver.add solver [not_eq] ;
+  match Solver.check solver [] with
+  | Solver.UNSATISFIABLE ->
+      print_endline "✓ Index equivalency proven universally" ;
+      true
+  | Solver.SATISFIABLE ->
+      print_endline "✗ Index equivalency NOT proven (Counterexample exists):" ;
+      ( match Solver.get_model solver with
+      | Some m ->
+          print_endline (Model.to_string m)
+      | None ->
+          () ) ;
+      false
+  | Solver.UNKNOWN ->
+      print_endline "✗ Index equivalency UNKNOWN" ;
+      false

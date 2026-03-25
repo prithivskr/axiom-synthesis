@@ -5,4 +5,5 @@
  (modules
   tensor term environment evaluator generator
   canonicalization equality generalization latex verify verify_nested
+  verify_index
   prelude))
