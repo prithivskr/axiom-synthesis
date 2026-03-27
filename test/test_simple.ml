@@ -17,7 +17,7 @@ let is_empirically_equal t1 t2 ~tests ~max_tries =
   check_equality t1 t2 params ~tests ~max_tries_per_test:max_tries
 
 let is_formally_provable t1 t2 z3_op =
-  try verify ~use_inductive_hypothesis:true ~verbose:true t1 t2 z3_op []
+  try fst (verify ~use_inductive_hypothesis:true ~verbose:true t1 t2 z3_op [])
   with _ -> false
 
 let test_random_pairs_consistency () =

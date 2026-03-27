@@ -116,7 +116,7 @@ let () =
           print_endline "========================================" ;
           let is_purely_entailed =
             !proven_axioms <> []
-            && verify ~use_inductive_hypothesis:false a b z3_op !proven_axioms
+            && fst (verify ~use_inductive_hypothesis:false a b z3_op !proven_axioms)
           in
           if is_purely_entailed then
             print_endline
@@ -125,7 +125,7 @@ let () =
                needed)"
           else begin
             let proven_directly =
-              verify ~use_inductive_hypothesis:true a b z3_op []
+              fst (verify ~use_inductive_hypothesis:true a b z3_op [])
             in
             if proven_directly then begin
               print_endline
@@ -134,7 +134,7 @@ let () =
             end
             else begin
               let proven_combined =
-                verify ~use_inductive_hypothesis:true a b z3_op !proven_axioms
+                fst (verify ~use_inductive_hypothesis:true a b z3_op !proven_axioms)
               in
               if proven_combined then begin
                 print_endline

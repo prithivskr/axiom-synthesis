@@ -17,15 +17,20 @@ let z3_argmax ctx v0 i0 v1 i1 =
 
 let () =
   let c = Var "c" in
+  let d = Var "d" in
   let t = Tensor "T" in
   let op_max = max in
-  let lhs = Mult (c, Reduction ("X", op_max, t)) in
-  let rhs = Reduction ("X", op_max, Mult (c, t)) in
+  let lhs = Mult (d, Mult (c, Reduction ("X", op_max, t))) in
+  let rhs = Add (d, Reduction ("X", op_max, Mult (d, t))) in
   printf "Candidate Theorem: %s == %s\n" (term_to_s lhs) (term_to_s rhs) ;
   printf "========================================\n" ;
   printf "Verifying argmax reduction...\n" ;
-  let value_proven =
-    verify ~use_inductive_hypothesis:true lhs rhs
+  let check_index bounds =
+    verify_index_step bounds lhs rhs (fun ctx v0 i0 v1 i1 ->
+        snd (z3_argmax ctx v0 i0 v1 i1) )
+  in
+  let value_proven, value_bounds =
+    verify ~use_inductive_hypothesis:true lhs rhs ~check_index ~verbose:true
       (fun ctx v0 v1 _ _ ->
         fst
           (z3_argmax ctx v0
@@ -34,13 +39,8 @@ let () =
              (Arithmetic.Integer.mk_numeral_i ctx 1) ) )
       []
   in
-  if value_proven then print_endline "SAT" else print_endline "UNSAT" ;
-  printf "----------------------------------------\n" ;
-  let index_proven =
-    verify_index lhs rhs (fun ctx v0 i0 v1 i1 ->
-        snd (z3_argmax ctx v0 i0 v1 i1) )
-  in
-  printf "========================================\n" ;
-  if value_proven && index_proven then
-    printf "Result: Theorem is fully PROVEN for Argmax tuple reduction!\n"
+  if value_proven then
+    printf
+      "Result: Theorem is fully PROVEN for Argmax tuple reduction! Bounds: %s\n"
+      (print_bounds value_bounds)
   else printf "Result: Theorem is NOT PROVEN.\n"

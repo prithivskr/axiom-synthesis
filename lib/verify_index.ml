@@ -1,5 +1,6 @@
 open Z3
 open Term
+open Verify
 
 let rec find_reduction = function
   | Reduction (_, _, inner) ->
@@ -30,8 +31,8 @@ let rec inner_term_to_z3 ctx vars tensor_val term =
   | Reduction _ ->
       failwith "Nested reductions in index verification not yet supported"
 
-let verify_index lhs rhs z3_reduce_index =
-  print_endline "Verifying index equivalence..." ;
+let verify_index_step bounds lhs rhs z3_reduce_index =
+  (* We no longer print anything here so we are silent in the loop, or maybe print a small debug line if we want? Let's stay silent. *)
   let cfg = [("model", "true")] in
   let ctx = mk_context cfg in
   let solver = Solver.mk_solver ctx None in
@@ -77,18 +78,40 @@ let verify_index lhs rhs z3_reduce_index =
   let eq = Boolean.mk_eq ctx lhs_idx rhs_idx in
   let not_eq = Boolean.mk_not ctx eq in
   Solver.add solver [not_eq] ;
+  let scalar_vars = Hashtbl.fold (fun k v acc ->
+    if Sort.equal (Expr.get_sort v) int_sort then (k, v) :: acc else acc
+  ) vars [] in
+  List.iter (fun (name, b) ->
+     let expr_opt = List.assoc_opt name scalar_vars in
+     match expr_opt with
+     | Some expr ->
+         (match b.lower with
+          | Some l -> Solver.add solver [Arithmetic.mk_ge ctx expr (Arithmetic.Integer.mk_numeral_i ctx l)]
+          | None -> ());
+         (match b.upper with
+          | Some u -> Solver.add solver [Arithmetic.mk_le ctx expr (Arithmetic.Integer.mk_numeral_i ctx u)]
+          | None -> ())
+     | None -> ()
+  ) bounds;
+
   match Solver.check solver [] with
-  | Solver.UNSATISFIABLE ->
-      print_endline "✓ Index equivalency proven universally" ;
-      true
+  | Solver.UNSATISFIABLE -> Proven
   | Solver.SATISFIABLE ->
-      print_endline "✗ Index equivalency NOT proven (Counterexample exists):" ;
-      ( match Solver.get_model solver with
-      | Some m ->
-          print_endline (Model.to_string m)
-      | None ->
-          () ) ;
-      false
-  | Solver.UNKNOWN ->
-      print_endline "✗ Index equivalency UNKNOWN" ;
-      false
+      let model = Option.get (Solver.get_model solver) in
+      let env = List.filter_map (fun (name, expr) ->
+         match Model.eval model expr true with
+         | Some v_expr ->
+             let s = Expr.to_string v_expr in
+             let s_clean = 
+               if String.length s > 0 && s.[0] = '(' then
+                 let inner = String.sub s 1 (String.length s - 2) in
+                 match String.split_on_char ' ' inner with
+                 | ["-"; n] -> "-" ^ n
+                 | _ -> inner
+               else s
+             in
+             (try Some (name, int_of_string s_clean) with _ -> None)
+         | None -> None
+      ) scalar_vars in
+      Counterexample env
+  | Solver.UNKNOWN -> Unknown
