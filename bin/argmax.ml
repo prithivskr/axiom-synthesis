@@ -30,7 +30,7 @@ let () =
         snd (z3_argmax ctx v0 i0 v1 i1) )
   in
   let value_proven, value_bounds =
-    verify ~use_inductive_hypothesis:true lhs rhs ~check_index ~verbose:true
+    verify ~use_inductive_hypothesis:true lhs rhs ~check_index
       (fun ctx v0 v1 _ _ ->
         fst
           (z3_argmax ctx v0

@@ -1,28 +1,34 @@
 open Term
 open Z3
 
-type bound = { lower : int option; lower_strict : bool; upper : int option; upper_strict : bool }
+type bound =
+  {lower: int option; lower_strict: bool; upper: int option; upper_strict: bool}
 
-type verify_result = 
-  | Proven
-  | Counterexample of (string * int) list
-  | Unknown
+type verify_result = Proven | Counterexample of (string * int) list | Unknown
 
 let print_bounds bs =
-  let s = List.map (fun (name, b) ->
-    let l_str = match b.lower with Some l -> string_of_int l | None -> "-inf" in
-    let u_str = match b.upper with Some u -> string_of_int u | None -> "inf" in
-    let l_paren = if b.lower_strict || b.lower = None then "(" else "[" in
-    let u_paren = if b.upper_strict || b.upper = None then ")" else "]" in
-    Printf.sprintf "%s in %s%s, %s%s" name l_paren l_str u_str u_paren
-  ) bs in
+  let s =
+    List.map
+      (fun (name, b) ->
+        let l_str =
+          match b.lower with Some l -> string_of_int l | None -> "-inf"
+        in
+        let u_str =
+          match b.upper with Some u -> string_of_int u | None -> "inf"
+        in
+        let l_paren = if b.lower_strict || b.lower = None then "(" else "[" in
+        let u_paren = if b.upper_strict || b.upper = None then ")" else "]" in
+        Printf.sprintf "%s in %s%s, %s%s" name l_paren l_str u_str u_paren )
+      bs
+  in
   String.concat ", " s
 
 let is_valid b =
-  match b.lower, b.upper with
-  | Some l, Some u -> 
+  match (b.lower, b.upper) with
+  | Some l, Some u ->
       if b.lower_strict || b.upper_strict then l < u else l <= u
-  | _ -> true
+  | _ ->
+      true
 
 let declare_vars ctx int_sort tensor_sort lhs rhs =
   let vars = extract_vars lhs @ extract_vars rhs in
@@ -202,8 +208,8 @@ let check_multiplication_distributes ctx operation mul_scalar_scalar
   | Solver.UNKNOWN ->
       false
 
-let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index = fun _ -> Proven) lhs rhs z3_op
-    proven_axioms =
+let verify ?(use_inductive_hypothesis = true) ?(verbose = false)
+    ?(check_index = fun _ -> Proven) lhs rhs z3_op proven_axioms =
   print_endline "Verifying..." ;
   let cfg = [("model", "true")] in
   let ctx = mk_context cfg in
@@ -549,13 +555,22 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
   in
   Solver.add solver [Boolean.mk_not ctx (Boolean.mk_eq ctx cex_lhs cex_rhs)] ;
   (* Extract integer variables for bounds search *)
-  let scalar_vars = Hashtbl.fold (fun k v acc ->
-    if Sort.equal (Expr.get_sort v) int_sort then (k, v) :: acc else acc
-  ) cex_vars [] in
-  let initial_bounds = List.map (fun (name, _) -> name, { lower = None; lower_strict = false; upper = None; upper_strict = false }) scalar_vars in
+  let scalar_vars =
+    Hashtbl.fold
+      (fun k v acc ->
+        if Sort.equal (Expr.get_sort v) int_sort then (k, v) :: acc else acc )
+      cex_vars []
+  in
+  let initial_bounds =
+    List.map
+      (fun (name, _) ->
+        ( name
+        , {lower= None; lower_strict= false; upper= None; upper_strict= false}
+        ) )
+      scalar_vars
+  in
   let queue = Queue.create () in
   Queue.add initial_bounds queue ;
-
   let check_axiom_for_var expr b_bound is_mul =
     let solver2 = Solver.mk_solver ctx None in
     let params2 = Params.mk_params ctx in
@@ -584,22 +599,22 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
                 (Expr.mk_app ctx operation [a; b])
                 (z3_op ctx a b mul_scalar_scalar add_scalar_scalar) )
              None [] [] None None ) ] ;
-    (match b_bound.lower with
-     | Some l -> 
-         let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
-         if b_bound.lower_strict then
-           Solver.add solver2 [Arithmetic.mk_gt ctx expr num]
-         else
-           Solver.add solver2 [Arithmetic.mk_ge ctx expr num]
-     | None -> ());
-    (match b_bound.upper with
-     | Some u -> 
-         let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
-         if b_bound.upper_strict then
-           Solver.add solver2 [Arithmetic.mk_lt ctx expr num]
-         else
-           Solver.add solver2 [Arithmetic.mk_le ctx expr num]
-     | None -> ());
+    ( match b_bound.lower with
+    | Some l ->
+        let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
+        if b_bound.lower_strict then
+          Solver.add solver2 [Arithmetic.mk_gt ctx expr num]
+        else Solver.add solver2 [Arithmetic.mk_ge ctx expr num]
+    | None ->
+        () ) ;
+    ( match b_bound.upper with
+    | Some u ->
+        let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
+        if b_bound.upper_strict then
+          Solver.add solver2 [Arithmetic.mk_lt ctx expr num]
+        else Solver.add solver2 [Arithmetic.mk_le ctx expr num]
+    | None ->
+        () ) ;
     let op_scalar = if is_mul then mul_scalar_scalar else add_scalar_scalar in
     Solver.add solver2
       [ Boolean.mk_not ctx
@@ -610,127 +625,189 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
              (Expr.mk_app ctx op_scalar
                 [Expr.mk_app ctx operation [at_var; bt_var]; expr] ) ) ] ;
     match Solver.check solver2 [] with
-    | Solver.UNSATISFIABLE -> true
-    | _ -> false
+    | Solver.UNSATISFIABLE ->
+        true
+    | _ ->
+        false
   in
-
   let rec cegis_loop attempts =
-    if verbose then Printf.printf "Attempt %d, queue size %d\n%!" attempts (Queue.length queue);
+    if verbose then
+      Printf.printf "Attempt %d, queue size %d\n%!" attempts
+        (Queue.length queue) ;
     if attempts > 100 then (false, [])
     else if Queue.is_empty queue then (false, [])
     else begin
       let bounds = Queue.pop queue in
-      Solver.push solver;
-      List.iter (fun (name, b_bound) ->
-         let expr = List.assoc name scalar_vars in
-         (match b_bound.lower with
-          | Some l -> 
-              let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
+      Solver.push solver ;
+      List.iter
+        (fun (name, b_bound) ->
+          let expr = List.assoc name scalar_vars in
+          ( match b_bound.lower with
+          | Some l ->
+              let num =
+                Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx)
+              in
               if b_bound.lower_strict then
                 Solver.add solver [Arithmetic.mk_gt ctx expr num]
-              else
-                Solver.add solver [Arithmetic.mk_ge ctx expr num]
-          | None -> ());
-         (match b_bound.upper with
-          | Some u -> 
-              let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
+              else Solver.add solver [Arithmetic.mk_ge ctx expr num]
+          | None ->
+              () ) ;
+          ( match b_bound.upper with
+          | Some u ->
+              let num =
+                Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx)
+              in
               if b_bound.upper_strict then
                 Solver.add solver [Arithmetic.mk_lt ctx expr num]
-              else
-                Solver.add solver [Arithmetic.mk_le ctx expr num]
-          | None -> ());
-         
-         if check_axiom_for_var expr b_bound true then
-           Solver.add solver
-             [ Quantifier.expr_of_quantifier
-                 (Quantifier.mk_forall_const ctx [a; b]
-                    (Boolean.mk_eq ctx
-                       (Expr.mk_app ctx operation
-                          [ Expr.mk_app ctx mul_scalar_scalar [a; expr]
-                          ; Expr.mk_app ctx mul_scalar_scalar [b; expr] ] )
-                       (Expr.mk_app ctx mul_scalar_scalar
-                          [Expr.mk_app ctx operation [a; b]; expr] ) )
-                    None [] [] None None ) ] ;
-                    
-         if check_axiom_for_var expr b_bound false then
-           Solver.add solver
-             [ Quantifier.expr_of_quantifier
-                 (Quantifier.mk_forall_const ctx [a; b]
-                    (Boolean.mk_eq ctx
-                       (Expr.mk_app ctx operation
-                          [ Expr.mk_app ctx add_scalar_scalar [a; expr]
-                          ; Expr.mk_app ctx add_scalar_scalar [b; expr] ] )
-                       (Expr.mk_app ctx add_scalar_scalar
-                          [Expr.mk_app ctx operation [a; b]; expr] ) )
-                    None [] [] None None ) ] ;
-      ) bounds;
-
+              else Solver.add solver [Arithmetic.mk_le ctx expr num]
+          | None ->
+              () ) ;
+          if check_axiom_for_var expr b_bound true then
+            Solver.add solver
+              [ Quantifier.expr_of_quantifier
+                  (Quantifier.mk_forall_const ctx [a; b]
+                     (Boolean.mk_eq ctx
+                        (Expr.mk_app ctx operation
+                           [ Expr.mk_app ctx mul_scalar_scalar [a; expr]
+                           ; Expr.mk_app ctx mul_scalar_scalar [b; expr] ] )
+                        (Expr.mk_app ctx mul_scalar_scalar
+                           [Expr.mk_app ctx operation [a; b]; expr] ) )
+                     None [] [] None None ) ] ;
+          if check_axiom_for_var expr b_bound false then
+            Solver.add solver
+              [ Quantifier.expr_of_quantifier
+                  (Quantifier.mk_forall_const ctx [a; b]
+                     (Boolean.mk_eq ctx
+                        (Expr.mk_app ctx operation
+                           [ Expr.mk_app ctx add_scalar_scalar [a; expr]
+                           ; Expr.mk_app ctx add_scalar_scalar [b; expr] ] )
+                        (Expr.mk_app ctx add_scalar_scalar
+                           [Expr.mk_app ctx operation [a; b]; expr] ) )
+                     None [] [] None None ) ] )
+        bounds ;
       let res = Solver.check solver [] in
       let branch_on_counterexample env bounds =
-        List.iter (fun (name, v) ->
-           let b = List.assoc name bounds in
-           let valid_lower = b.lower = None || (if b.lower_strict then Option.get b.lower < v else Option.get b.lower <= v) in
-           let valid_upper = b.upper = None || (if b.upper_strict then Option.get b.upper > v else Option.get b.upper >= v) in
-           if valid_lower && valid_upper then begin
-             let b1 = { b with lower = Some v; lower_strict = true } in
-             let b2 = { b with upper = Some v; upper_strict = true } in
-             if is_valid b1 then Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b)) bounds) queue;
-             if is_valid b2 then Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b)) bounds) queue;
-           end
-        ) env
+        List.iter
+          (fun (name, v) ->
+            let b = List.assoc name bounds in
+            let valid_lower =
+              b.lower = None
+              ||
+              if b.lower_strict then Option.get b.lower < v
+              else Option.get b.lower <= v
+            in
+            let valid_upper =
+              b.upper = None
+              ||
+              if b.upper_strict then Option.get b.upper > v
+              else Option.get b.upper >= v
+            in
+            if valid_lower && valid_upper then begin
+              let b1 = {b with lower= Some v; lower_strict= true} in
+              let b2 = {b with upper= Some v; upper_strict= true} in
+              if is_valid b1 then
+                Queue.add
+                  (List.map
+                     (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b))
+                     bounds )
+                  queue ;
+              if is_valid b2 then
+                Queue.add
+                  (List.map
+                     (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b))
+                     bounds )
+                  queue
+            end )
+          env
       in
       let split_unknown bounds =
-        let split_var = List.find_opt (fun (_, b) -> b.lower = None && b.upper = None) bounds in
-        (match split_var with
-         | Some (name, b) ->
-             let b1 = { b with lower = Some 0; lower_strict = true } in
-             let b2 = { upper = Some 0; lower = Some 0; upper_strict = false; lower_strict = false } in
-             let b3 = { b with upper = Some 0; upper_strict = true } in
-             Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b)) bounds) queue;
-             Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b)) bounds) queue;
-             Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b3) else (n, old_b)) bounds) queue;
-         | None -> ())
+        let split_var =
+          List.find_opt (fun (_, b) -> b.lower = None && b.upper = None) bounds
+        in
+        match split_var with
+        | Some (name, b) ->
+            let b1 = {b with lower= Some 0; lower_strict= true} in
+            let b2 =
+              { upper= Some 0
+              ; lower= Some 0
+              ; upper_strict= false
+              ; lower_strict= false }
+            in
+            let b3 = {b with upper= Some 0; upper_strict= true} in
+            Queue.add
+              (List.map
+                 (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b))
+                 bounds )
+              queue ;
+            Queue.add
+              (List.map
+                 (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b))
+                 bounds )
+              queue ;
+            Queue.add
+              (List.map
+                 (fun (n, old_b) -> if n = name then (n, b3) else (n, old_b))
+                 bounds )
+              queue
+        | None ->
+            ()
       in
       match res with
-      | Solver.UNSATISFIABLE -> 
-          Solver.pop solver 1;
-          (match check_index bounds with
-           | Proven ->
-               if verbose then print_endline ("PROVEN universally with bounds: " ^ print_bounds bounds);
-               (true, bounds)
-           | Counterexample env ->
-               if verbose then print_endline ("SAT (Index Counterexample) with bounds: " ^ print_bounds bounds);
-               branch_on_counterexample env bounds;
-               cegis_loop (attempts + 1)
-           | Unknown ->
-               if verbose then print_endline ("UNKNOWN index with bounds: " ^ print_bounds bounds);
-               split_unknown bounds;
-               cegis_loop (attempts + 1))
+      | Solver.UNSATISFIABLE -> (
+          Solver.pop solver 1 ;
+          match check_index bounds with
+          | Proven ->
+              if verbose then
+                print_endline
+                  ("PROVEN universally with bounds: " ^ print_bounds bounds) ;
+              (true, bounds)
+          | Counterexample env ->
+              if verbose then
+                print_endline
+                  ( "SAT (Index Counterexample) with bounds: "
+                  ^ print_bounds bounds ) ;
+              branch_on_counterexample env bounds ;
+              cegis_loop (attempts + 1)
+          | Unknown ->
+              if verbose then
+                print_endline
+                  ("UNKNOWN index with bounds: " ^ print_bounds bounds) ;
+              split_unknown bounds ;
+              cegis_loop (attempts + 1) )
       | Solver.SATISFIABLE ->
-          if verbose then print_endline ("SAT (Value Counterexample) with bounds: " ^ print_bounds bounds);
+          if verbose then
+            print_endline
+              ("SAT (Value Counterexample) with bounds: " ^ print_bounds bounds) ;
           let model = Option.get (Solver.get_model solver) in
-          Solver.pop solver 1;
-          let env = List.filter_map (fun (name, expr) ->
-             match Model.eval model expr true with
-             | Some v_expr ->
-                 let s = Expr.to_string v_expr in
-                 let s_clean = 
-                   if String.length s > 0 && s.[0] = '(' then
-                     let inner = String.sub s 1 (String.length s - 2) in
-                     match String.split_on_char ' ' inner with
-                     | ["-"; n] -> "-" ^ n
-                     | _ -> inner
-                   else s
-                 in
-                 (try Some (name, int_of_string s_clean) with _ -> None)
-             | None -> None
-          ) scalar_vars in
-          branch_on_counterexample env bounds;
+          Solver.pop solver 1 ;
+          let env =
+            List.filter_map
+              (fun (name, expr) ->
+                match Model.eval model expr true with
+                | Some v_expr -> (
+                    let s = Expr.to_string v_expr in
+                    let s_clean =
+                      if String.length s > 0 && s.[0] = '(' then
+                        let inner = String.sub s 1 (String.length s - 2) in
+                        match String.split_on_char ' ' inner with
+                        | ["-"; n] ->
+                            "-" ^ n
+                        | _ ->
+                            inner
+                      else s
+                    in
+                    try Some (name, int_of_string s_clean) with _ -> None )
+                | None ->
+                    None )
+              scalar_vars
+          in
+          branch_on_counterexample env bounds ;
           cegis_loop (attempts + 1)
       | Solver.UNKNOWN ->
-          if verbose then print_endline ("UNKNOWN with bounds: " ^ print_bounds bounds);
-          Solver.pop solver 1;
-          split_unknown bounds;
+          if verbose then
+            print_endline ("UNKNOWN with bounds: " ^ print_bounds bounds) ;
+          Solver.pop solver 1 ;
+          split_unknown bounds ;
           cegis_loop (attempts + 1)
     end
   in

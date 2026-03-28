@@ -32,7 +32,6 @@ let rec inner_term_to_z3 ctx vars tensor_val term =
       failwith "Nested reductions in index verification not yet supported"
 
 let verify_index_step bounds lhs rhs z3_reduce_index =
-  (* We no longer print anything here so we are silent in the loop, or maybe print a small debug line if we want? Let's stay silent. *)
   let cfg = [("model", "true")] in
   let ctx = mk_context cfg in
   let solver = Solver.mk_solver ctx None in
@@ -78,50 +77,66 @@ let verify_index_step bounds lhs rhs z3_reduce_index =
   let eq = Boolean.mk_eq ctx lhs_idx rhs_idx in
   let not_eq = Boolean.mk_not ctx eq in
   Solver.add solver [not_eq] ;
-  let scalar_vars = Hashtbl.fold (fun k v acc ->
-    if Sort.equal (Expr.get_sort v) int_sort then (k, v) :: acc else acc
-  ) vars [] in
-  List.iter (fun (name, b) ->
-     let expr_opt = List.assoc_opt name scalar_vars in
-     match expr_opt with
-     | Some expr ->
-         (match b.lower with
-          | Some l -> 
-              let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
+  let scalar_vars =
+    Hashtbl.fold
+      (fun k v acc ->
+        if Sort.equal (Expr.get_sort v) int_sort then (k, v) :: acc else acc )
+      vars []
+  in
+  List.iter
+    (fun (name, b) ->
+      let expr_opt = List.assoc_opt name scalar_vars in
+      match expr_opt with
+      | Some expr -> (
+          ( match b.lower with
+          | Some l ->
+              let num =
+                Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx)
+              in
               if b.lower_strict then
                 Solver.add solver [Arithmetic.mk_gt ctx expr num]
-              else
-                Solver.add solver [Arithmetic.mk_ge ctx expr num]
-          | None -> ());
-         (match b.upper with
-          | Some u -> 
-              let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
+              else Solver.add solver [Arithmetic.mk_ge ctx expr num]
+          | None ->
+              () ) ;
+          match b.upper with
+          | Some u ->
+              let num =
+                Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx)
+              in
               if b.upper_strict then
                 Solver.add solver [Arithmetic.mk_lt ctx expr num]
-              else
-                Solver.add solver [Arithmetic.mk_le ctx expr num]
-          | None -> ())
-     | None -> ()
-  ) bounds;
-
+              else Solver.add solver [Arithmetic.mk_le ctx expr num]
+          | None ->
+              () )
+      | None ->
+          () )
+    bounds ;
   match Solver.check solver [] with
-  | Solver.UNSATISFIABLE -> Proven
+  | Solver.UNSATISFIABLE ->
+      Proven
   | Solver.SATISFIABLE ->
       let model = Option.get (Solver.get_model solver) in
-      let env = List.filter_map (fun (name, expr) ->
-         match Model.eval model expr true with
-         | Some v_expr ->
-             let s = Expr.to_string v_expr in
-             let s_clean = 
-               if String.length s > 0 && s.[0] = '(' then
-                 let inner = String.sub s 1 (String.length s - 2) in
-                 match String.split_on_char ' ' inner with
-                 | ["-"; n] -> "-" ^ n
-                 | _ -> inner
-               else s
-             in
-             (try Some (name, int_of_string s_clean) with _ -> None)
-         | None -> None
-      ) scalar_vars in
+      let env =
+        List.filter_map
+          (fun (name, expr) ->
+            match Model.eval model expr true with
+            | Some v_expr -> (
+                let s = Expr.to_string v_expr in
+                let s_clean =
+                  if String.length s > 0 && s.[0] = '(' then
+                    let inner = String.sub s 1 (String.length s - 2) in
+                    match String.split_on_char ' ' inner with
+                    | ["-"; n] ->
+                        "-" ^ n
+                    | _ ->
+                        inner
+                  else s
+                in
+                try Some (name, int_of_string s_clean) with _ -> None )
+            | None ->
+                None )
+          scalar_vars
+      in
       Counterexample env
-  | Solver.UNKNOWN -> Unknown
+  | Solver.UNKNOWN ->
+      Unknown
