@@ -11,6 +11,7 @@
   canonicalization
   equality
   generalization
+  parser
   latex
   verify
   verify_nested

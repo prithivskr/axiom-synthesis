@@ -6,6 +6,7 @@ module Generator = Generator
 module Canonicalization = Canonicalization
 module Equality = Equality
 module Generalization = Generalization
+module Parser = Parser
 module Latex = Latex
 module Verify = Verify
 module Verify_nested = Verify_nested
@@ -17,6 +18,7 @@ include Generator
 include Canonicalization
 include Equality
 include Generalization
+include Parser
 include Latex
 include Verify
 include Verify_nested
