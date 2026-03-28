@@ -86,10 +86,20 @@ let verify_index_step bounds lhs rhs z3_reduce_index =
      match expr_opt with
      | Some expr ->
          (match b.lower with
-          | Some l -> Solver.add solver [Arithmetic.mk_ge ctx expr (Arithmetic.Integer.mk_numeral_i ctx l)]
+          | Some l -> 
+              let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
+              if b.lower_strict then
+                Solver.add solver [Arithmetic.mk_gt ctx expr num]
+              else
+                Solver.add solver [Arithmetic.mk_ge ctx expr num]
           | None -> ());
          (match b.upper with
-          | Some u -> Solver.add solver [Arithmetic.mk_le ctx expr (Arithmetic.Integer.mk_numeral_i ctx u)]
+          | Some u -> 
+              let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
+              if b.upper_strict then
+                Solver.add solver [Arithmetic.mk_lt ctx expr num]
+              else
+                Solver.add solver [Arithmetic.mk_le ctx expr num]
           | None -> ())
      | None -> ()
   ) bounds;

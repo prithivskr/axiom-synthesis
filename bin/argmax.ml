@@ -21,7 +21,7 @@ let () =
   let t = Tensor "T" in
   let op_max = max in
   let lhs = Mult (d, Mult (c, Reduction ("X", op_max, t))) in
-  let rhs = Add (d, Reduction ("X", op_max, Mult (d, t))) in
+  let rhs = Mult (c, Reduction ("X", op_max, Mult (d, t))) in
   printf "Candidate Theorem: %s == %s\n" (term_to_s lhs) (term_to_s rhs) ;
   printf "========================================\n" ;
   printf "Verifying argmax reduction...\n" ;

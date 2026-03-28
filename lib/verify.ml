@@ -1,7 +1,7 @@
 open Term
 open Z3
 
-type bound = { lower : int option; upper : int option }
+type bound = { lower : int option; lower_strict : bool; upper : int option; upper_strict : bool }
 
 type verify_result = 
   | Proven
@@ -10,15 +10,18 @@ type verify_result =
 
 let print_bounds bs =
   let s = List.map (fun (name, b) ->
-    let l = match b.lower with Some l -> string_of_int l | None -> "-inf" in
-    let u = match b.upper with Some u -> string_of_int u | None -> "inf" in
-    Printf.sprintf "%s in [%s, %s]" name l u
+    let l_str = match b.lower with Some l -> string_of_int l | None -> "-inf" in
+    let u_str = match b.upper with Some u -> string_of_int u | None -> "inf" in
+    let l_paren = if b.lower_strict || b.lower = None then "(" else "[" in
+    let u_paren = if b.upper_strict || b.upper = None then ")" else "]" in
+    Printf.sprintf "%s in %s%s, %s%s" name l_paren l_str u_str u_paren
   ) bs in
   String.concat ", " s
 
 let is_valid b =
   match b.lower, b.upper with
-  | Some l, Some u -> l <= u
+  | Some l, Some u -> 
+      if b.lower_strict || b.upper_strict then l < u else l <= u
   | _ -> true
 
 let declare_vars ctx int_sort tensor_sort lhs rhs =
@@ -549,7 +552,7 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
   let scalar_vars = Hashtbl.fold (fun k v acc ->
     if Sort.equal (Expr.get_sort v) int_sort then (k, v) :: acc else acc
   ) cex_vars [] in
-  let initial_bounds = List.map (fun (name, _) -> name, { lower = None; upper = None }) scalar_vars in
+  let initial_bounds = List.map (fun (name, _) -> name, { lower = None; lower_strict = false; upper = None; upper_strict = false }) scalar_vars in
   let queue = Queue.create () in
   Queue.add initial_bounds queue ;
 
@@ -582,10 +585,20 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
                 (z3_op ctx a b mul_scalar_scalar add_scalar_scalar) )
              None [] [] None None ) ] ;
     (match b_bound.lower with
-     | Some l -> Solver.add solver2 [Arithmetic.mk_ge ctx expr (Arithmetic.Integer.mk_numeral_i ctx l)]
+     | Some l -> 
+         let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
+         if b_bound.lower_strict then
+           Solver.add solver2 [Arithmetic.mk_gt ctx expr num]
+         else
+           Solver.add solver2 [Arithmetic.mk_ge ctx expr num]
      | None -> ());
     (match b_bound.upper with
-     | Some u -> Solver.add solver2 [Arithmetic.mk_le ctx expr (Arithmetic.Integer.mk_numeral_i ctx u)]
+     | Some u -> 
+         let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
+         if b_bound.upper_strict then
+           Solver.add solver2 [Arithmetic.mk_lt ctx expr num]
+         else
+           Solver.add solver2 [Arithmetic.mk_le ctx expr num]
      | None -> ());
     let op_scalar = if is_mul then mul_scalar_scalar else add_scalar_scalar in
     Solver.add solver2
@@ -611,10 +624,20 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
       List.iter (fun (name, b_bound) ->
          let expr = List.assoc name scalar_vars in
          (match b_bound.lower with
-          | Some l -> Solver.add solver [Arithmetic.mk_ge ctx expr (Arithmetic.Integer.mk_numeral_i ctx l)]
+          | Some l -> 
+              let num = Expr.mk_numeral_int ctx l (Arithmetic.Real.mk_sort ctx) in
+              if b_bound.lower_strict then
+                Solver.add solver [Arithmetic.mk_gt ctx expr num]
+              else
+                Solver.add solver [Arithmetic.mk_ge ctx expr num]
           | None -> ());
          (match b_bound.upper with
-          | Some u -> Solver.add solver [Arithmetic.mk_le ctx expr (Arithmetic.Integer.mk_numeral_i ctx u)]
+          | Some u -> 
+              let num = Expr.mk_numeral_int ctx u (Arithmetic.Real.mk_sort ctx) in
+              if b_bound.upper_strict then
+                Solver.add solver [Arithmetic.mk_lt ctx expr num]
+              else
+                Solver.add solver [Arithmetic.mk_le ctx expr num]
           | None -> ());
          
          if check_axiom_for_var expr b_bound true then
@@ -646,9 +669,11 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
       let branch_on_counterexample env bounds =
         List.iter (fun (name, v) ->
            let b = List.assoc name bounds in
-           if (b.lower = None || Option.get b.lower <= v) && (b.upper = None || Option.get b.upper >= v) then begin
-             let b1 = { b with lower = Some (v + 1) } in
-             let b2 = { b with upper = Some (v - 1) } in
+           let valid_lower = b.lower = None || (if b.lower_strict then Option.get b.lower < v else Option.get b.lower <= v) in
+           let valid_upper = b.upper = None || (if b.upper_strict then Option.get b.upper > v else Option.get b.upper >= v) in
+           if valid_lower && valid_upper then begin
+             let b1 = { b with lower = Some v; lower_strict = true } in
+             let b2 = { b with upper = Some v; upper_strict = true } in
              if is_valid b1 then Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b)) bounds) queue;
              if is_valid b2 then Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b)) bounds) queue;
            end
@@ -658,9 +683,9 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false) ?(check_index =
         let split_var = List.find_opt (fun (_, b) -> b.lower = None && b.upper = None) bounds in
         (match split_var with
          | Some (name, b) ->
-             let b1 = { b with lower = Some 1 } in
-             let b2 = { upper = Some 0; lower = Some 0 } in
-             let b3 = { b with upper = Some (-1) } in
+             let b1 = { b with lower = Some 0; lower_strict = true } in
+             let b2 = { upper = Some 0; lower = Some 0; upper_strict = false; lower_strict = false } in
+             let b3 = { b with upper = Some 0; upper_strict = true } in
              Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b)) bounds) queue;
              Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b)) bounds) queue;
              Queue.add (List.map (fun (n, old_b) -> if n = name then (n, b3) else (n, old_b)) bounds) queue;
