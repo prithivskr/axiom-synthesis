@@ -55,7 +55,9 @@ let () =
   Random.self_init () ;
   let n_candidates = 5 in
   let batch_size = 50 in
-  let params = {var_pool= ["u"]; axes_pool= ["X"; "Y"]; tensor_pool= ["A"; "B"]} in
+  let params =
+    {var_pool= ["u"]; axes_pool= ["X"; "Y"]; tensor_pool= ["A"; "B"]}
+  in
   let op = hlo_op in
   let z3_op = hlo_z3_op in
   let found_tbl : (string, int term * int term * string) Hashtbl.t =
