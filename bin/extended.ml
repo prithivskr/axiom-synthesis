@@ -11,18 +11,12 @@ let hlo_comparator_text =
   %region_0.2 (Arg_0.3: f32[], Arg_1.4: s32[], Arg_2.5: f32[], Arg_3.6: s32[]) -> (f32[], s32[]) {
     %Arg_0.3 = f32[] parameter(0)
     %Arg_2.5 = f32[] parameter(2)
-    %compare.7 = pred[] compare(%Arg_0.3, %Arg_2.5), direction=GT
-    %compare.8 = pred[] compare(%Arg_0.3, %Arg_0.3), direction=NE
-    %or.9 = pred[] or(%compare.7, %compare.8)
-    %select.14 = f32[] select(%or.9, %Arg_0.3, %Arg_2.5)
-    %compare.10 = pred[] compare(%Arg_0.3, %Arg_2.5), direction=EQ
+
     %Arg_1.4 = s32[] parameter(1)
     %Arg_3.6 = s32[] parameter(3)
-    %compare.11 = pred[] compare(%Arg_1.4, %Arg_3.6), direction=LT
-    %and.12 = pred[] and(%compare.10, %compare.11)
-    %or.13 = pred[] or(%or.9, %and.12)
-    %select.15 = s32[] select(%or.13, %Arg_1.4, %Arg_3.6)
-    ROOT %tuple.16 = (f32[], s32[]) tuple(%select.14, %select.15)
+
+    %multiply.6 = f32[] multiply(%Arg_0.3, %Arg_2.5)
+    ROOT %tuple.16 = (f32[], s32[]) tuple(%multiply.6, %Arg_3.6)
   }
 |}
 
@@ -37,8 +31,8 @@ let get_val = function
       failwith "Expected int/bool in get_val"
 
 let hlo_op a b =
-  let res = hlo_eval [VInt a; VInt 0; VInt b; VInt 1] in
-  get_val (List.nth res 0)
+  let res = hlo_eval [|VInt a; VInt 0; VInt b; VInt 1|] in
+  get_val res.(0)
 
 let hlo_z3_op ctx a b _ _ =
   let root =
@@ -55,9 +49,7 @@ let () =
   Random.self_init () ;
   let n_candidates = 5 in
   let batch_size = 50 in
-  let params =
-    {var_pool= ["u"]; axes_pool= ["X"; "Y"]; tensor_pool= ["A"; "B"]}
-  in
+  let params = {var_pool= ["u"]; axes_pool= ["X"]; tensor_pool= ["A"; "B"]} in
   let op = hlo_op in
   let z3_op = hlo_z3_op in
   let found_tbl : (string, int term * int term * string) Hashtbl.t =

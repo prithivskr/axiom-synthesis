@@ -18,6 +18,20 @@ let z3_argmax ctx v0 i0 v1 i1 =
   (res_v, res_i)
 *)
 
+let hlo_comparator_text =
+  {|
+  %region_0.2 (Arg_0.3: f32[], Arg_1.4: s32[], Arg_2.5: f32[], Arg_3.6: s32[]) -> (f32[], s32[]) {
+    %Arg_0.3 = f32[] parameter(0)
+    %Arg_2.5 = f32[] parameter(2)
+
+    %Arg_1.4 = s32[] parameter(1)
+    %Arg_3.6 = s32[] parameter(3)
+
+    %multiply.6 = f32[] add(%Arg_0.3, %Arg_2.5)
+    ROOT %tuple.16 = (f32[], s32[]) tuple(%multiply.6, %Arg_3.6)
+  }
+|}
+
 let hlo_comparator1 =
   {|
   %region_0.2 (Arg_0.3: f32[], Arg_1.4: s32[], Arg_2.5: f32[], Arg_3.6: s32[]) -> (f32[], s32[]) {
@@ -51,7 +65,7 @@ let hlo_comparator2 =
     %compare.9 = pred[] compare(%Arg_1.4, %Arg_3.6), direction=LT
     %and.10 = pred[] and(%compare.8, %compare.9)
     %or.11 = pred[] or(%compare.7, %and.10)
-    %select.13 = s32[] select(%or.11, %Arg_1.4, %Arg_3.6)
+    %select.13 = s32[] select(%or.11, %Arg_1.4, %Arg_3.6
     ROOT %tuple.14 = (pred[], s32[]) tuple(%select.12, %select.13)
   }
 |}
@@ -61,13 +75,13 @@ let () =
   let d = Var "d" in
   let t = Tensor "T" in
   let op_max = max in
-  let lhs = Mult (d, Mult (c, Reduction ("X", op_max, t))) in
-  let rhs = Add (c, Reduction ("X", op_max, Mult (d, t))) in
+  let lhs = Add (d, Mult (c, Reduction ("X", op_max, t))) in
+  let rhs = Mult (c, Reduction ("X", op_max, Mult (d, t))) in
   printf "Candidate Theorem: %s == %s\n" (term_to_s lhs) (term_to_s rhs) ;
   printf "========================================\n" ;
   printf "Verifying argmax reduction...\n" ;
   let hlo_comparator ctx v0 i0 v1 i1 =
-    let root = translate_comparator ctx [v0; i0; v1; i1] hlo_comparator2 in
+    let root = translate_comparator ctx [v0; i0; v1; i1] hlo_comparator_text in
     (List.nth root 0, List.nth root 1)
   in
   let check_index bounds =

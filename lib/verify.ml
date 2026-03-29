@@ -313,13 +313,6 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false)
   let rhs_vars = extract_vars rhs |> List.map fst |> List.sort_uniq compare in
   let same_vars = lhs_vars = rhs_vars in
   let var_list = Hashtbl.fold (fun _ v acc -> v :: acc) exp_vars [] in
-  if use_inductive_hypothesis && same_vars then
-    Solver.add solver
-      [ Quantifier.expr_of_quantifier
-          (Quantifier.mk_forall_const ctx var_list
-             (Boolean.mk_eq ctx hyp_lhs hyp_rhs)
-             None [] [] None None ) ] ;
-  (* E homomorphism over addition *)
   let g = Expr.mk_const ctx (Symbol.mk_string ctx "g") tensor_sort in
   Solver.add solver
     [ Quantifier.expr_of_quantifier
@@ -641,6 +634,53 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false)
     else begin
       let bounds = Queue.pop queue in
       Solver.push solver ;
+      if use_inductive_hypothesis && same_vars then begin
+        let conds =
+          Hashtbl.fold
+            (fun name v acc ->
+              if Sort.equal (Expr.get_sort v) int_sort then
+                match List.assoc_opt name bounds with
+                | Some b_bound ->
+                    let c = ref [] in
+                    ( match b_bound.lower with
+                    | Some l ->
+                        let num =
+                          Expr.mk_numeral_int ctx l
+                            (Arithmetic.Real.mk_sort ctx)
+                        in
+                        if b_bound.lower_strict then
+                          c := Arithmetic.mk_gt ctx v num :: !c
+                        else c := Arithmetic.mk_ge ctx v num :: !c
+                    | None ->
+                        () ) ;
+                    ( match b_bound.upper with
+                    | Some u ->
+                        let num =
+                          Expr.mk_numeral_int ctx u
+                            (Arithmetic.Real.mk_sort ctx)
+                        in
+                        if b_bound.upper_strict then
+                          c := Arithmetic.mk_lt ctx v num :: !c
+                        else c := Arithmetic.mk_le ctx v num :: !c
+                    | None ->
+                        () ) ;
+                    !c @ acc
+                | None ->
+                    acc
+              else acc )
+            exp_vars []
+        in
+        let hyp_body =
+          if conds = [] then Boolean.mk_eq ctx hyp_lhs hyp_rhs
+          else
+            Boolean.mk_implies ctx (Boolean.mk_and ctx conds)
+              (Boolean.mk_eq ctx hyp_lhs hyp_rhs)
+        in
+        Solver.add solver
+          [ Quantifier.expr_of_quantifier
+              (Quantifier.mk_forall_const ctx var_list hyp_body None [] [] None
+                 None ) ]
+      end ;
       List.iter
         (fun (name, b_bound) ->
           let expr = List.assoc name scalar_vars in

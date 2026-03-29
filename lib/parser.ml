@@ -10,6 +10,8 @@ type hlo_op =
   | Not of string
   | Select of string * string * string
   | Tuple of string list
+  | Multiply of string * string
+  | Add of string * string
 
 type instr = {name: string; sort: hlo_sort option; op: hlo_op; is_root: bool}
 
@@ -19,15 +21,12 @@ let strip_pct s =
   let s = strip s in
   if s <> "" && s.[0] = '%' then String.sub s 1 (String.length s - 1) else s
 
-let parse_sort = function
-  | "f32[]" ->
-      Some F32
-  | "s32[]" ->
-      Some S32
-  | "pred[]" ->
-      Some Pred
-  | _ ->
-      None
+let parse_sort s =
+  let s = strip s in
+  if String.length s >= 3 && String.sub s 0 3 = "f32" then Some F32
+  else if String.length s >= 3 && String.sub s 0 3 = "s32" then Some S32
+  else if String.length s >= 4 && String.sub s 0 4 = "pred" then Some Pred
+  else None
 
 let between_parens s =
   match (String.index_opt s '(', String.rindex_opt s ')') with
@@ -72,7 +71,6 @@ let find_direction s =
             Some (String.sub p plen (String.length p - plen))
           else None )
 
-(* split "f32[] compare(...)" or "(f32[], s32[]) tuple(...)" into (sort, op_string) *)
 let split_type_and_op rest =
   let rest = strip rest in
   if rest <> "" && rest.[0] = '(' then
@@ -146,7 +144,12 @@ let parse_instr line =
             match args with [c; t; f] -> Some (Select (c, t, f)) | _ -> None )
           | "tuple" ->
               Some (Tuple args)
+          | "multiply" -> (
+            match args with [a; b] -> Some (Multiply (a, b)) | _ -> None )
+          | "add" -> (
+            match args with [a; b] -> Some (Add (a, b)) | _ -> None )
           | _ ->
+              Printf.eprintf "Warning: unknown op '%s', skipping\n" op_name ;
               None
         in
         Option.map (fun op -> {name; sort; op; is_root}) op
@@ -180,6 +183,13 @@ let translate_comparator ctx param_exprs hlo_text =
     | None ->
         failwith ("Unbound HLO variable: %" ^ name)
   in
+  let to_arith e =
+    if Sort.equal (Expr.get_sort e) (Boolean.mk_sort ctx) then
+      Boolean.mk_ite ctx e
+        (Arithmetic.Integer.mk_numeral_i ctx 1)
+        (Arithmetic.Integer.mk_numeral_i ctx 0)
+    else e
+  in
   let root = ref [] in
   String.split_on_char '\n' hlo_text
   |> List.filter_map parse_instr
@@ -193,13 +203,13 @@ let translate_comparator ctx param_exprs hlo_text =
           bind
             ( match dir with
             | "GT" ->
-                Arithmetic.mk_gt ctx l r
+                Arithmetic.mk_gt ctx (to_arith l) (to_arith r)
             | "LT" ->
-                Arithmetic.mk_lt ctx l r
+                Arithmetic.mk_lt ctx (to_arith l) (to_arith r)
             | "GE" ->
-                Arithmetic.mk_ge ctx l r
+                Arithmetic.mk_ge ctx (to_arith l) (to_arith r)
             | "LE" ->
-                Arithmetic.mk_le ctx l r
+                Arithmetic.mk_le ctx (to_arith l) (to_arith r)
             | "EQ" ->
                 Boolean.mk_eq ctx l r
             | "NE" ->
@@ -214,6 +224,10 @@ let translate_comparator ctx param_exprs hlo_text =
           bind (Boolean.mk_not ctx (lookup a))
       | Select (c, t, f) ->
           bind (Boolean.mk_ite ctx (lookup c) (lookup t) (lookup f))
+      | Multiply (a, b) ->
+          bind (Arithmetic.mk_mul ctx [lookup a; lookup b])
+      | Add (a, b) ->
+          bind (Arithmetic.mk_add ctx [lookup a; lookup b])
       | Tuple ops when instr.is_root ->
           root := List.map lookup ops
       | Tuple _ ->
@@ -222,96 +236,151 @@ let translate_comparator ctx param_exprs hlo_text =
 
 type hlo_val = VFloat of float | VInt of int | VBool of bool
 
+type opt_op =
+  | OParameter of int
+  | OCompare of int * int * string
+  | OAnd of int * int
+  | OOr of int * int
+  | ONot of int
+  | OSelect of int * int * int
+  | OTuple of int list
+  | OMultiply of int * int
+  | OAdd of int * int
+
 let compile_hlo hlo_text =
   let instrs =
     String.split_on_char '\n' hlo_text |> List.filter_map parse_instr
   in
-  fun params ->
-    let env = Hashtbl.create 16 in
-    let lookup name = Hashtbl.find env name in
-    let root = ref [] in
-    List.iter
+  let name_to_idx = Hashtbl.create 16 in
+  List.iteri (fun i instr -> Hashtbl.add name_to_idx instr.name i) instrs ;
+  let get_idx name = Hashtbl.find name_to_idx name in
+  let n = List.length instrs in
+  let optimized =
+    List.map
       (fun instr ->
-        let res =
+        let op =
           match instr.op with
           | Parameter n ->
-              List.nth params n
-          | Compare (a, b, dir) -> (
-              let l = lookup a and r = lookup b in
-              match (l, r) with
-              | VFloat fl, VFloat fr ->
-                  VBool
-                    ( match dir with
-                    | "GT" ->
-                        fl > fr
-                    | "LT" ->
-                        fl < fr
-                    | "GE" ->
-                        fl >= fr
-                    | "LE" ->
-                        fl <= fr
-                    | "EQ" ->
-                        fl = fr
-                    | "NE" ->
-                        fl <> fr
-                    | _ ->
-                        failwith "dir" )
-              | VInt il, VInt ir ->
-                  VBool
-                    ( match dir with
-                    | "GT" ->
-                        il > ir
-                    | "LT" ->
-                        il < ir
-                    | "GE" ->
-                        il >= ir
-                    | "LE" ->
-                        il <= ir
-                    | "EQ" ->
-                        il = ir
-                    | "NE" ->
-                        il <> ir
-                    | _ ->
-                        failwith "dir" )
-              | VBool bl, VBool br ->
-                  VBool
-                    ( match dir with
-                    | "EQ" ->
-                        bl = br
-                    | "NE" ->
-                        bl <> br
-                    | _ ->
-                        failwith "dir" )
-              | _ ->
-                  failwith "type mismatch in compare" )
-          | And (a, b) -> (
-            match (lookup a, lookup b) with
-            | VBool al, VBool bl ->
-                VBool (al && bl)
-            | _ ->
-                failwith "type mismatch in and" )
-          | Or (a, b) -> (
-            match (lookup a, lookup b) with
-            | VBool al, VBool bl ->
-                VBool (al || bl)
-            | _ ->
-                failwith "type mismatch in or" )
-          | Not a -> (
-            match lookup a with
-            | VBool al ->
-                VBool (not al)
-            | _ ->
-                failwith "type mismatch in not" )
-          | Select (c, t, f) -> (
-            match lookup c with
-            | VBool cond ->
-                if cond then lookup t else lookup f
-            | _ ->
-                failwith "type mismatch in select" )
-          | Tuple ops ->
-              if instr.is_root then root := List.map lookup ops ;
-              VBool false (* dummy *)
+              OParameter n
+          | Compare (a, b, d) ->
+              OCompare (get_idx a, get_idx b, d)
+          | And (a, b) ->
+              OAnd (get_idx a, get_idx b)
+          | Or (a, b) ->
+              OOr (get_idx a, get_idx b)
+          | Not a ->
+              ONot (get_idx a)
+          | Select (c, t, f) ->
+              OSelect (get_idx c, get_idx t, get_idx f)
+          | Tuple names ->
+              OTuple (List.map get_idx names)
+          | Multiply (a, b) ->
+              OMultiply (get_idx a, get_idx b)
+          | Add (a, b) ->
+              OAdd (get_idx a, get_idx b)
         in
-        Hashtbl.add env instr.name res )
-      instrs ;
-    !root
+        (op, instr.is_root) )
+      instrs
+    |> Array.of_list
+  in
+  fun params ->
+    let env = Array.make n (VBool false) in
+    let root = ref [] in
+    for i = 0 to n - 1 do
+      let op, is_root = optimized.(i) in
+      let res =
+        match op with
+        | OParameter p ->
+            params.(p)
+        | OCompare (ai, bi, dir) -> (
+            let l = env.(ai) and r = env.(bi) in
+            match (l, r) with
+            | VInt il, VInt ir ->
+                VBool
+                  ( match dir with
+                  | "GT" ->
+                      il > ir
+                  | "LT" ->
+                      il < ir
+                  | "GE" ->
+                      il >= ir
+                  | "LE" ->
+                      il <= ir
+                  | "EQ" ->
+                      il = ir
+                  | "NE" ->
+                      il <> ir
+                  | _ ->
+                      false )
+            | VFloat fl, VFloat fr ->
+                VBool
+                  ( match dir with
+                  | "GT" ->
+                      fl > fr
+                  | "LT" ->
+                      fl < fr
+                  | "GE" ->
+                      fl >= fr
+                  | "LE" ->
+                      fl <= fr
+                  | "EQ" ->
+                      fl = fr
+                  | "NE" ->
+                      fl <> fr
+                  | _ ->
+                      false )
+            | VBool bl, VBool br ->
+                VBool
+                  ( match dir with
+                  | "EQ" ->
+                      bl = br
+                  | "NE" ->
+                      bl <> br
+                  | _ ->
+                      false )
+            | _ ->
+                VBool false )
+        | OAnd (ai, bi) -> (
+          match (env.(ai), env.(bi)) with
+          | VBool bl, VBool br ->
+              VBool (bl && br)
+          | _ ->
+              VBool false )
+        | OOr (ai, bi) -> (
+          match (env.(ai), env.(bi)) with
+          | VBool bl, VBool br ->
+              VBool (bl || br)
+          | _ ->
+              VBool false )
+        | ONot ai -> (
+          match env.(ai) with VBool b -> VBool (not b) | _ -> VBool false )
+        | OSelect (ci, ti, fi) -> (
+          match env.(ci) with
+          | VBool cond ->
+              if cond then env.(ti) else env.(fi)
+          | _ ->
+              VBool false )
+        | OMultiply (ai, bi) -> (
+          match (env.(ai), env.(bi)) with
+          | VFloat fl, VFloat fr ->
+              VFloat (fl *. fr)
+          | VInt il, VInt ir ->
+              VInt (il * ir)
+          | _ ->
+              VBool false )
+        | OAdd (ai, bi) -> (
+          match (env.(ai), env.(bi)) with
+          | VFloat fl, VFloat fr ->
+              VFloat (fl +. fr)
+          | VInt il, VInt ir ->
+              VInt (il + ir)
+          | _ ->
+              VBool false )
+        | OTuple indices ->
+            if is_root then
+              root := List.map (fun idx -> env.(idx)) indices ;
+            VBool false
+      in
+      env.(i) <- res
+    done ;
+    Array.of_list !root
