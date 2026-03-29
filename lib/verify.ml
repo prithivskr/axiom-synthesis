@@ -26,7 +26,9 @@ let print_bounds bs =
 let is_valid b =
   match (b.lower, b.upper) with
   | Some l, Some u ->
-      if b.lower_strict || b.upper_strict then l < u else l <= u
+      let eff_l = if b.lower_strict then l + 1 else l in
+      let eff_u = if b.upper_strict then u - 1 else u in
+      eff_l <= eff_u && not (eff_l = 0 && eff_u = 0)
   | _ ->
       true
 
@@ -634,7 +636,7 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false)
     if verbose then
       Printf.printf "Attempt %d, queue size %d\n%!" attempts
         (Queue.length queue) ;
-    if attempts > 100 then (false, [])
+    if attempts > 20 then (false, [])
     else if Queue.is_empty queue then (false, [])
     else begin
       let bounds = Queue.pop queue in
@@ -734,21 +736,24 @@ let verify ?(use_inductive_hypothesis = true) ?(verbose = false)
               ; lower_strict= false }
             in
             let b3 = {b with upper= Some 0; upper_strict= true} in
-            Queue.add
-              (List.map
-                 (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b))
-                 bounds )
-              queue ;
-            Queue.add
-              (List.map
-                 (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b))
-                 bounds )
-              queue ;
-            Queue.add
-              (List.map
-                 (fun (n, old_b) -> if n = name then (n, b3) else (n, old_b))
-                 bounds )
-              queue
+            if is_valid b1 then
+              Queue.add
+                (List.map
+                   (fun (n, old_b) -> if n = name then (n, b1) else (n, old_b))
+                   bounds )
+                queue ;
+            if is_valid b2 then
+              Queue.add
+                (List.map
+                   (fun (n, old_b) -> if n = name then (n, b2) else (n, old_b))
+                   bounds )
+                queue ;
+            if is_valid b3 then
+              Queue.add
+                (List.map
+                   (fun (n, old_b) -> if n = name then (n, b3) else (n, old_b))
+                   bounds )
+                queue
         | None ->
             ()
       in
