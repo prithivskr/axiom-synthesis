@@ -219,3 +219,99 @@ let translate_comparator ctx param_exprs hlo_text =
       | Tuple _ ->
           () ) ;
   !root
+
+type hlo_val = VFloat of float | VInt of int | VBool of bool
+
+let compile_hlo hlo_text =
+  let instrs =
+    String.split_on_char '\n' hlo_text |> List.filter_map parse_instr
+  in
+  fun params ->
+    let env = Hashtbl.create 16 in
+    let lookup name = Hashtbl.find env name in
+    let root = ref [] in
+    List.iter
+      (fun instr ->
+        let res =
+          match instr.op with
+          | Parameter n ->
+              List.nth params n
+          | Compare (a, b, dir) -> (
+              let l = lookup a and r = lookup b in
+              match (l, r) with
+              | VFloat fl, VFloat fr ->
+                  VBool
+                    ( match dir with
+                    | "GT" ->
+                        fl > fr
+                    | "LT" ->
+                        fl < fr
+                    | "GE" ->
+                        fl >= fr
+                    | "LE" ->
+                        fl <= fr
+                    | "EQ" ->
+                        fl = fr
+                    | "NE" ->
+                        fl <> fr
+                    | _ ->
+                        failwith "dir" )
+              | VInt il, VInt ir ->
+                  VBool
+                    ( match dir with
+                    | "GT" ->
+                        il > ir
+                    | "LT" ->
+                        il < ir
+                    | "GE" ->
+                        il >= ir
+                    | "LE" ->
+                        il <= ir
+                    | "EQ" ->
+                        il = ir
+                    | "NE" ->
+                        il <> ir
+                    | _ ->
+                        failwith "dir" )
+              | VBool bl, VBool br ->
+                  VBool
+                    ( match dir with
+                    | "EQ" ->
+                        bl = br
+                    | "NE" ->
+                        bl <> br
+                    | _ ->
+                        failwith "dir" )
+              | _ ->
+                  failwith "type mismatch in compare" )
+          | And (a, b) -> (
+            match (lookup a, lookup b) with
+            | VBool al, VBool bl ->
+                VBool (al && bl)
+            | _ ->
+                failwith "type mismatch in and" )
+          | Or (a, b) -> (
+            match (lookup a, lookup b) with
+            | VBool al, VBool bl ->
+                VBool (al || bl)
+            | _ ->
+                failwith "type mismatch in or" )
+          | Not a -> (
+            match lookup a with
+            | VBool al ->
+                VBool (not al)
+            | _ ->
+                failwith "type mismatch in not" )
+          | Select (c, t, f) -> (
+            match lookup c with
+            | VBool cond ->
+                if cond then lookup t else lookup f
+            | _ ->
+                failwith "type mismatch in select" )
+          | Tuple ops ->
+              if instr.is_root then root := List.map lookup ops ;
+              VBool false (* dummy *)
+        in
+        Hashtbl.add env instr.name res )
+      instrs ;
+    !root

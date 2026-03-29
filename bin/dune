@@ -13,6 +13,12 @@
  (name argmax)
  (libraries axiomatization z3))
 
+(executable
+ (public_name extended)
+ (name extended)
+ (libraries axiomatization z3))
+
+
 (env
  (dev
   (flags
